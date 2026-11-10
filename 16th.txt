@@ -1,0 +1,106 @@
+NS2 Program
+Create a file named lab.tcl and type the following program.
+# Create simulator
+set ns [new Simulator]
+# Create trace and NAM files
+set tracefile [open out.tr w]
+$ns trace-all $tracefile
+set namfile [open out.nam w]
+$ns namtrace-all $namfile
+# Create four nodes
+set n0 [$ns node]
+set n1 [$ns node]
+set n2 [$ns node]
+set n3 [$ns node]
+# Create network links
+$ns duplex-link $n0 $n2 2Mb 10ms DropTail
+$ns duplex-link $n1 $n2 2Mb 10ms DropTail
+$ns duplex-link $n2 $n3 500Kb 20ms DropTail
+# Set queue size
+$ns queue-limit $n2 $n3 10
+# Create TCP connection
+set tcp [new Agent/TCP]
+$ns attach-agent $n0 $tcp
+set sink [new Agent/TCPSink]
+$ns attach-agent $n3 $sink
+$ns connect $tcp $sink
+# Create FTP application
+set ftp [new Application/FTP]
+$ftp attach-agent $tcp
+# Create UDP connection
+set udp [new Agent/UDP]
+$ns attach-agent $n1 $udp
+set null [new Agent/Null]
+$ns attach-agent $n3 $null
+$ns connect $udp $null
+# Create CBR application
+set cbr [new Application/Traffic/CBR]
+$cbr set packetSize_ 1000
+$cbr set interval_ 0.008
+$cbr attach-agent $udp
+# Finish procedure
+proc finish {} {
+ global ns tracefile namfile
+ $ns flush-trace
+ close $tracefile
+ close $namfile
+ exec nam out.nam &
+ exit 0
+}
+# Start and stop applications
+$ns at 0.5 "$ftp start"
+$ns at 0.5 "$cbr start"
+$ns at 9.5 "$ftp stop"
+$ns at 9.5 "$cbr stop"
+$ns at 10.0 "finish"
+# Run simulation
+$ns run
+
+
+
+
+Aim: To calculate the total number of packets dropped during the simulation.
+awk '$1=="d" {count++}
+END {print "Total Packets Dropped:", count+0}' out.tr
+Sample output:
+Total Packets Dropped: <number>
+
+
+
+Aim: To identify the number of TCP and UDP packets dropped during the simulation.
+awk '$1=="d" {drops[$5]++}
+END {
+print "TCP Drops:", drops["tcp"]+0
+print "UDP/CBR Drops:", drops["cbr"]+0
+}' out.tr
+Sample output format:
+TCP Drops: <number>
+UDP/CBR Drops: <number>
+
+
+
+
+Aim: To identify the packets dropped at the congested link.
+In this experiment, the link between Node 2 and Node 3 has a bandwidth of 500 Kbps. Both
+TCP and UDP traffic use this link. Since the link has limited capacity, congestion may occur.
+awk '$1=="d" && $3==2 && $4==3 {count++}
+END {print "Packets dropped at link 2 to 3:", count+0}' out.tr
+Sample output format:
+Packets dropped at link 2 to 3: <number>
+
+
+
+Aim: To compare the configured data rate with the actual throughput received at the
+destination.
+In our program, the UDP CBR application is configured with:
+Packet size = 1000 bytes,Interval = 0.008 seconds,Configured data rate = 1 Mbps
+Throughput:
+Throughput is the amount of data successfully received at the destination per second.
+Command to calculate UDP throughput:
+awk '$1=="r" && $5=="cbr" && $4==3 {
+bytes += $6
+}
+END {
+printf "Received Data: %.0f bytes\n", bytes
+printf "Throughput: %.3f Mbps\n", bytes*8/10/1000000
+}' out.tr
